@@ -38,21 +38,15 @@ def calculate_frame_data(ts, ref_positions, protein, ligand, cutoff=6.0):
 def save_checkpoint(rank, current_frame, results, checkpoint_dir="checkpoints"):
     """Save intermediate results and progress for this rank."""
     try:
-        # Create checkpoint directory
         if not ensure_directory(checkpoint_dir):
             return
-
-        # Only save if we have results
         if not results:
             return
 
         results_file = os.path.join(checkpoint_dir, f"results_rank_{rank}.npy")
         progress_file = os.path.join(checkpoint_dir, f"progress_rank_{rank}.json")
-
-        # Save results
         np.save(results_file, np.array(results))
 
-        # Save progress
         progress = {
             "last_completed_frame": current_frame,
             "timestamp": datetime.now().isoformat(),
@@ -99,10 +93,10 @@ def load_checkpoint(rank, start_frame, checkpoint_dir="checkpoints"):
 
 def process_frames(topology_file, trajectory_file, reference_file, start_frame, end_frame, rank, checkpoint_interval=1000):
     """Process a range of frames with checkpointing."""
-    # Load checkpoint or start fresh
+    
     results, current_frame = load_checkpoint(rank, start_frame)
 
-    # Initialize MDAnalysis objects
+   
     u = mda.Universe(topology_file, trajectory_file, guess_bonds=False, guess_angles=False)
     ref_universe = mda.Universe(topology_file, reference_file, guess_bonds=False, guess_angles=False)
 
@@ -114,7 +108,7 @@ def process_frames(topology_file, trajectory_file, reference_file, start_frame, 
     total_frames = end_frame - current_frame
     frames_processed = 0
 
-    # Process frames in the assigned range
+    
     for ts in u.trajectory[current_frame:end_frame]:
         rmsd, contacts = calculate_frame_data(ts, ref_positions, protein, ligand)
         if rmsd is not None and contacts is not None:
@@ -127,7 +121,7 @@ def process_frames(topology_file, trajectory_file, reference_file, start_frame, 
             print(f"Rank {rank}: {progress:.1f}% complete ({frames_processed}/{total_frames} frames)")
             sys.stdout.flush()
 
-    # Final checkpoint save
+    
     if results:
         save_checkpoint(rank, end_frame - 1, results)
         print(f"Rank {rank}: Completed {frames_processed} frames")
@@ -155,10 +149,10 @@ def analyze_trajectory_mpi(topology_file, trajectory_file, reference_file, outpu
     else:
         total_frames = None
 
-    # Broadcast total frames
+   
     total_frames = comm.bcast(total_frames, root=0)
 
-    # Calculate frame ranges
+   
     chunk_size = total_frames // size
     remainder = total_frames % size
 
@@ -174,7 +168,7 @@ def analyze_trajectory_mpi(topology_file, trajectory_file, reference_file, outpu
     print(f"Process {rank}: Assigned frames {start_frame} to {end_frame-1}")
     sys.stdout.flush()
 
-    # Process frames
+   
     results = process_frames(
         topology_file,
         trajectory_file,
@@ -184,7 +178,7 @@ def analyze_trajectory_mpi(topology_file, trajectory_file, reference_file, outpu
         rank
     )
 
-    # Gather results
+   
     results_array = np.array(results)
     all_results = comm.gather(results_array, root=0)
 
@@ -193,7 +187,7 @@ def combine_results(size, output_file="RMSD_Ncontact_data_final.txt", checkpoint
     print("Combining results from all ranks...")
     all_results = []
     
-    # Load results from each rank in order
+    
     for rank in range(size):
         results_file = os.path.join(checkpoint_dir, f"results_rank_{rank}.npy")
         if os.path.exists(results_file):
@@ -205,11 +199,11 @@ def combine_results(size, output_file="RMSD_Ncontact_data_final.txt", checkpoint
                 print(f"Error loading results from rank {rank}: {e}")
     
     if all_results:
-        # Combine all results
+      
         combined_results = np.vstack(all_results)
         print(f"Total frames combined: {len(combined_results)}")
         
-        # Save combined results
+       
         np.save("combined_results.npy", combined_results)
         np.savetxt(output_file, combined_results, header="RMSD Ncontact", comments='#')
         print(f"Results saved to {output_file} and combined_results.npy")
